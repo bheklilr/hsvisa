@@ -1,0 +1,27 @@
+name:                VISA
+version:             0.0.2
+synopsis:            Haskell bindings for the VISA library
+license:             GPL-2
+author:              Aaron Stevens
+maintainer:          bheklilr2@gmail.com
+copyright:           Aaron Stevens (c) 2013
+category:            Other
+build-type:          Simple
+cabal-version:       >=1.8
+
+library
+  exposed-modules:      VISA.Types, VISA.Consts, VISA.Vpp43, VISA.IO, VISA.Trans, VISA
+  build-depends:        base == 4.6.*,
+                        mtl  == 2.1.*
+--  extra-lib-dirs:       C:/Users/astevens/projects/haskell/visa
+--  extra-libraries:      visa32
+  ghc-options:          -fforce-recomp -Wall -fno-warn-unused-do-bind -LC:/Users/astevens/projects/haskell/visa -lvisa32
+  install-includes:     visa32.dll, visa.h
+
+--executable test_visa
+--  main-is:              test_visa.hs
+--  build-depends:        base == 4.6.*
+--  extra-lib-dirs:       C:/Users/astevens/projects/haskell/visa
+--  extra-libraries:      visa32
+--  ghc-options:          -fforce-recomp -Wall -fno-warn-unused-do-bind -LC:/Users/astevens/projects/haskell/visa -lvisa32
+--  install-includes:     visa32.dll, visa.h
