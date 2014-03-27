@@ -1,97 +1,84 @@
-{-# LANGUAGE DoAndIfThenElse            #-}
-{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE BangPatterns   #-}
 module VISA
     ( module VISA.Trans
 
-    , getSession, getStatusDesc, errorHandle
     , scanForInstruments
-    , openVisa, closeVisa
-    , readVisa, writeVisa, queryVisa
-    , clearVisa
+    , openSimple
+    , writeVisa
+    , readVisa
+    , queryVisa
+    , closeSesn
     ) where
 
-import VISA.Types
-import VISA.Consts
-import VISA.Trans
-import qualified VISA.IO as Vi
 
-import Control.Monad
+import           VISA.Driver.Types
+import           VISA.Driver.VppConsts
+import qualified VISA.IO                as Vi
+import           VISA.Trans
+
+import Control.Monad (forM)
+import Control.Concurrent (threadDelay)
+
+-- | A monadic version of Control.Monad.void since I don't want to add the Functor constraint
+voidM :: Monad m => m a -> m ()
+voidM m = do
+    _ <- m
+    return ()
 
 --------------------------------------------------------------------------------
 
-getSession :: MonadIO m => VisaT m ViSession
-getSession = do
-    vi <- get
-    case visaSession vi of
-        Nothing -> do
-            (status, session) <- liftIO $! Vi.openDefaultRM
-            if status /= 0 then do
-                (status', desc) <- liftIO $! Vi.statusDesc session status
-                when (status' /= 0) $
-                    throwError (status', "Could not get status description.")
-                throwError (status, desc)
-            else do
-                put $ Visa $ Just session
-                return session
-        Just session -> return session
-
-getStatusDesc :: MonadIO m => ViStatus -> VisaT m String
-getStatusDesc status = do
-    session <- getSession
-    (status', desc) <- liftIO $! Vi.statusDesc session status
-    when (status' /= 0) $
-        throwError (status', "Could not get status description.")
-    return desc
-
-errorHandle :: MonadIO m => ViStatus -> VisaT m ()
-errorHandle !status = when (status /= 0) $ do
-    desc <- getStatusDesc status
-    throwError (status, desc)
-
-scanForInstruments :: MonadIO m => VisaT m [String]
+scanForInstruments :: MonadIO io => VisaT io [String]
 scanForInstruments = do
-    session <- getSession
-    (status, fl, ctr, first) <- liftIO $! Vi.findRsrc session "?*"
-    errorHandle status
-    (statuses, rest) <- liftIO $! fmap unzip $ replicateM (fromEnum ctr - 1) $ Vi.findNext fl
-    mapM_ errorHandle statuses
+    (fl, cnt, first) <- Vi.findRsrc "?*"
+    !rest <- forM [2..cnt] $ \_ -> Vi.findNext fl
     return $ first : rest
 
-openVisa :: MonadIO m => String -> VisaT m ()
-openVisa addr = do
-    session <- getSession
-    (status, newSession) <- liftIO $! Vi.open session addr viNoLock viTmoImmediate
-    errorHandle status
-    closeVisa
-    put $ Visa $ Just newSession
+openSimple :: MonadIO io => String -> VisaT io ()
+openSimple rsrc = do
+    Vi.open rsrc viNull viTmoImmediate
+    Vi.setAttribute viAttrTmoValue 1000
+    Vi.setAttribute viAttrTermcharEn 0
+    Vi.setAttribute viAttrSendEndEn 1
 
-closeVisa :: MonadIO m => VisaT m ()
-closeVisa = do
-    session <- getSession
-    status <- liftIO $! Vi.close session
-    errorHandle status
-    put $ Visa Nothing
+writeVisa :: MonadIO io => String -> VisaT io ()
+writeVisa msg = voidM $ Vi.writeVi msg
 
-readVisa :: MonadIO m => VisaT m String
+readVisa :: MonadIO io => VisaT io String
 readVisa = do
-    session <- getSession
-    (status, msg) <- liftIO $! Vi.readVi session 256
-    errorHandle status
-    if length msg < 256
-        then return msg
-        else readVisa >>= return . (++) msg
+    let maxCnt = 20480
+    let loop = do
+        str <- Vi.readVi maxCnt
+        if length str < fromEnum maxCnt
+            then return str
+            else do
+                rest <- loop
+                return $ str ++ rest
+    loop
 
-writeVisa :: MonadIO m => String -> VisaT m ()
-writeVisa msg = do
-    session <- getSession
-    (status, _) <- liftIO $! Vi.writeVi session msg
-    errorHandle status
-
-queryVisa :: MonadIO m => String -> VisaT m String
+queryVisa :: MonadIO io => String -> VisaT io String
 queryVisa msg = writeVisa msg >> readVisa
 
-clearVisa :: MonadIO m => VisaT m ()
-clearVisa = do
-    session <- getSession
-    status <- liftIO $! Vi.clear session
-    errorHandle status
+closeSesn :: MonadIO io => VisaT io ()
+closeSesn = do
+    rm <- Vi.getRsrcMgr
+    Vi.close rm
+
+
+test :: VisaIO ()
+test = do
+    openSimple "ASRL13::INSTR"
+    liftIO $ threadDelay $ 2000 * 1000
+    writeVisa "arduino::id\r\n"
+    resp <- readVisa
+    liftIO $ putStrLn resp
+    closeSesn
+
+test2 :: VisaIO ()
+test2 = do
+    openSimple "ASRL13::INSTR"
+    liftIO $ threadDelay $ 2000 * 1000
+    writeVisa "arduino::i2c::version\n"
+    readVisa >>= liftIO . putStr
+    writeVisa "arduino::switch::version\n"
+    readVisa >>= liftIO . putStr
+    closeSesn

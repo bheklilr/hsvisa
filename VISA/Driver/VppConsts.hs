@@ -1,4 +1,4 @@
-module VISA.Consts
+module VISA.Driver.VppConsts
     ( -- Attribute constants
       viAttrRsrcName
     , viAttrRsrcImplVersion
@@ -206,6 +206,7 @@ module VISA.Consts
     , viAllEnabledEvents
 
     -- Completion and Error Codes
+    , viSuccess
     , viSuccessEventEn
     , viSuccessEventDis
     , viSuccessQueueEmpty
@@ -309,6 +310,7 @@ module VISA.Consts
     , viErrorNpermission
 
     -- Other VISA Constants
+    , viNull
     , viFindBuflen
 
     , viIntfGpib
@@ -558,8 +560,6 @@ module VISA.Consts
     , viFirewireDfltSpace
     ) where
 
-import VISA.Types
-
 
 {- Attribute Types -}
 viAttrRsrcName,
@@ -747,7 +747,7 @@ viAttrRsrcName,
     viAttrPxiMemSizeBar2,
     viAttrPxiMemSizeBar3,
     viAttrPxiMemSizeBar4,
-    viAttrPxiMemSizeBar5 :: ViUInt32
+    viAttrPxiMemSizeBar5 :: Integral a => a
 viAttrRsrcName                = 0xBFFF0002
 viAttrRsrcImplVersion         = 0x3FFF0003
 viAttrRsrcLockState           = 0x3FFF0004
@@ -952,7 +952,7 @@ viEventIoCompletion,
     viEventPxiIntr,
     viEventTcpipConnect,
     viEventUsbIntr,
-    viAllEnabledEvents :: ViUInt32
+    viAllEnabledEvents :: Integral a => a
 viEventIoCompletion   = 0x3FFF2009
 viEventTrig           = 0xBFFF200A
 viEventServiceReq     = 0x3FFF200B
@@ -973,10 +973,11 @@ viAllEnabledEvents    = 0x3FFF7FFF
 
 
 {- Completion and Error Codes -}
-_VI_ERROR :: ViInt32
+_VI_ERROR :: Integral a => a
 _VI_ERROR = -0x80000000
 
-viSuccessEventEn,
+viSuccess,
+    viSuccessEventEn,
     viSuccessEventDis,
     viSuccessQueueEmpty,
     viSuccessTermChar,
@@ -987,7 +988,8 @@ viSuccessEventEn,
     viSuccessNchain,
     viSuccessNestedShared,
     viSuccessNestedExclusive,
-    viSuccessSync :: ViInt32
+    viSuccessSync :: Integral a => a
+viSuccess                = 0x00000000
 viSuccessEventEn         = 0x3FFF0002
 viSuccessEventDis        = 0x3FFF0003
 viSuccessQueueEmpty      = 0x3FFF0004
@@ -1008,7 +1010,7 @@ viWarnQueueOverflow,
     viWarnNsupAttrState,
     viWarnUnknownStatus,
     viWarnNsupBuf,
-    viWarnExtFuncNimpl :: ViInt32
+    viWarnExtFuncNimpl :: Integral a => a
 viWarnQueueOverflow = 0x3FFF000C
 viWarnConfigNloaded = 0x3FFF0077
 viWarnNullObject    = 0x3FFF0082
@@ -1096,7 +1098,7 @@ viErrorSystemError,
     viErrorIntfNumNconfig,
     viErrorConnLost,
     viErrorMachineNavail,
-    viErrorNpermission :: ViInt32
+    viErrorNpermission :: Integral a => a
 viErrorSystemError     = _VI_ERROR + 0x3FFF0000
 viErrorInvObject       = _VI_ERROR + 0x3FFF000E
 viErrorRsrcLocked      = _VI_ERROR + 0x3FFF000F
@@ -1180,7 +1182,10 @@ viErrorNpermission     = _VI_ERROR + 0x3FFF00A8
 
 
 {- Other VISA Definitions -}
-viFindBuflen :: ViInt16
+viNull :: Integral a => a
+viNull = 0
+
+viFindBuflen :: Integral a => a
 viFindBuflen = 256
 
 viIntfGpib,
@@ -1189,7 +1194,7 @@ viIntfGpib,
     viIntfAsrl,
     viIntfPxi,
     viIntfTcpip,
-    viIntfUsb :: ViInt16
+    viIntfUsb :: Integral a => a
 viIntfGpib    = 1
 viIntfVxi     = 2
 viIntfGpibVxi = 3
@@ -1202,7 +1207,7 @@ viProtNormal,
     viProtFdc,
     viProtHs488,
     viProt4882Strs,
-    viProtUsbtmcVendor :: ViInt16
+    viProtUsbtmcVendor :: Integral a => a
 viProtNormal       = 1
 viProtFdc          = 2
 viProtHs488        = 3
@@ -1210,7 +1215,7 @@ viProt4882Strs     = 4
 viProtUsbtmcVendor = 5
 
 viFdcNormal,
-    viFdcStream :: ViInt16
+    viFdcStream :: Integral a => a
 viFdcNormal = 1
 viFdcStream = 2
 
@@ -1227,7 +1232,7 @@ viLocalSpace,
     viPxiBar3Space,
     viPxiBar4Space,
     viPxiBar5Space,
-    viOpaqueSpace :: ViInt16
+    viOpaqueSpace :: Integral a => a
 viLocalSpace    = 0
 viA16Space      = 1
 viA24Space      = 2
@@ -1246,7 +1251,7 @@ viOpaqueSpace   = 0xFFFF
 viUnknownLa,
     viUnknownSlot,
     viUnknownLevel,
-    viUnknownChassis :: ViInt16
+    viUnknownChassis :: Integral a => a
 viUnknownLa      = -1
 viUnknownSlot    = -1
 viUnknownLevel   = -1
@@ -1255,13 +1260,13 @@ viUnknownChassis = -1
 viQueue,
     viHndlr,
     viSuspendHndlr,
-    viAllMech :: ViInt16
+    viAllMech :: Integral a => a
 viQueue        = 1
 viHndlr        = 2
 viSuspendHndlr = 4
 viAllMech      = 0xFFFF
 
-viAnyHndlr :: ViInt16
+viAnyHndlr :: Integral a => a
 viAnyHndlr = 0
 
 viTrigAll,
@@ -1297,7 +1302,7 @@ viTrigAll,
     viTrigPanelOut,
     viTrigStarVxi0,
     viTrigStarVxi1,
-    viTrigStarVxi2 :: ViInt16
+    viTrigStarVxi2 :: Integral a => a
 viTrigAll        = -2
 viTrigSw         = -1
 viTrigTtl0       = 0
@@ -1338,7 +1343,7 @@ viTrigProtDefault,
     viTrigProtOff,
     viTrigProtSync,
     viTrigProtReserve,
-    viTrigProtUnreserve :: ViInt16
+    viTrigProtUnreserve :: Integral a => a
 viTrigProtDefault   = 0
 viTrigProtOn        = 1
 viTrigProtOff       = 2
@@ -1353,7 +1358,7 @@ viReadBuf,
     viIoInBuf,
     viIoOutBuf,
     viIoInBufDiscard,
-    viIoOutBufDiscard :: ViInt16
+    viIoOutBufDiscard :: Integral a => a
 viReadBuf         = 1
 viWriteBuf        = 2
 viReadBufDiscard  = 4
@@ -1365,7 +1370,7 @@ viIoOutBufDiscard = 128
 
 viFlushOnAccess,
     viFlushWhenFull,
-    viFlushDisable :: ViInt16
+    viFlushDisable :: Integral a => a
 viFlushOnAccess = 1
 viFlushWhenFull = 2
 viFlushDisable  = 3
@@ -1373,35 +1378,35 @@ viFlushDisable  = 3
 viNmapped,
     viUseOpers,
     viDerefAddr,
-    viDerefAddrByteSwap :: ViInt16
+    viDerefAddrByteSwap :: Integral a => a
 viNmapped           = 1
 viUseOpers          = 2
 viDerefAddr         = 3
 viDerefAddrByteSwap = 4
 
-viTmoImmediate :: ViUInt32
+viTmoImmediate :: Integral a => a
 viTmoImmediate = 0
 
-viTmoInfinite :: ViUInt32
+viTmoInfinite :: Integral a => a
 viTmoInfinite  = 0xFFFFFFFF
 
 viNoLock,
     viExclusiveLock,
     viSharedLock,
-    viLoadConfig :: ViAccessMode
+    viLoadConfig :: Integral a => a
 viNoLock        = 0
 viExclusiveLock = 1
 viSharedLock    = 2
 viLoadConfig    = 4
 
-viNoSecAddr :: ViInt16
+viNoSecAddr :: Integral a => a
 viNoSecAddr = 0xFFFF
 
 viAsrlParNone,
     viAsrlParOdd,
     viAsrlParEven,
     viAsrlParMark,
-    viAsrlParSpace :: ViInt16
+    viAsrlParSpace :: Integral a => a
 viAsrlParNone  = 0
 viAsrlParOdd   = 1
 viAsrlParEven  = 2
@@ -1410,7 +1415,7 @@ viAsrlParSpace = 4
 
 viAsrlStopOne,
     viAsrlStopOne5,
-    viAsrlStopTwo :: ViInt16
+    viAsrlStopTwo :: Integral a => a
 viAsrlStopOne  = 10
 viAsrlStopOne5 = 15
 viAsrlStopTwo  = 20
@@ -1418,7 +1423,7 @@ viAsrlStopTwo  = 20
 viAsrlFlowNone,
     viAsrlFlowXonXoff,
     viAsrlFlowRtsCts,
-    viAsrlFlowDtrDsr :: ViInt16
+    viAsrlFlowDtrDsr :: Integral a => a
 viAsrlFlowNone    = 0
 viAsrlFlowXonXoff = 1
 viAsrlFlowRtsCts  = 2
@@ -1427,7 +1432,7 @@ viAsrlFlowDtrDsr  = 4
 viAsrlEndNone,
     viAsrlEndLastBit,
     viAsrlEndTermchar,
-    viAsrlEndBreak :: ViInt16
+    viAsrlEndBreak :: Integral a => a
 viAsrlEndNone     = 0
 viAsrlEndLastBit  = 1
 viAsrlEndTermchar = 2
@@ -1435,13 +1440,13 @@ viAsrlEndBreak    = 3
 
 viStateAsserted,
     viStateUnasserted,
-    viStateUnknown :: ViInt16
+    viStateUnknown :: Integral a => a
 viStateAsserted   = 1
 viStateUnasserted = 0
 viStateUnknown    = -1
 
 viBigEndian,
-    viLittleEndian :: ViInt16
+    viLittleEndian :: Integral a => a
 viBigEndian    = 0
 viLittleEndian = 1
 
@@ -1456,7 +1461,7 @@ viDataPriv,
     viD642evme,
     viD64Sst160,
     viD64Sst267,
-    viD64Sst320 :: ViInt16
+    viD64Sst320 :: Integral a => a
 viDataPriv  = 0
 viDataNpriv = 1
 viProgPriv  = 2
@@ -1473,7 +1478,7 @@ viD64Sst320 = 11
 viWidth8,
     viWidth16,
     viWidth32,
-    viWidth64 :: ViInt16
+    viWidth64 :: Integral a => a
 viWidth8  = 1
 viWidth16 = 2
 viWidth32 = 4
@@ -1485,7 +1490,7 @@ viGpibRenDeassert,
     viGpibRenAssertAddress,
     viGpibRenAssertLlo,
     viGpibRenAssertAddressLlo,
-    viGpibRenAddressGtl :: ViInt16
+    viGpibRenAddressGtl :: Integral a => a
 viGpibRenDeassert         = 0
 viGpibRenAssert           = 1
 viGpibRenDeassertGtl      = 2
@@ -1497,20 +1502,20 @@ viGpibRenAddressGtl       = 6
 viGpibAtnDeassert,
     viGpibAtnAssert,
     viGpibAtnDeassertHandshake,
-    viGpibAtnAssertImmediate :: ViInt16
+    viGpibAtnAssertImmediate :: Integral a => a
 viGpibAtnDeassert          = 0
 viGpibAtnAssert            = 1
 viGpibAtnDeassertHandshake = 2
 viGpibAtnAssertImmediate   = 3
 
 viGpibHs488Disabled,
-    viGpibHs488Nimpl :: ViInt16
+    viGpibHs488Nimpl :: Integral a => a
 viGpibHs488Disabled = 0
 viGpibHs488Nimpl    = -1
 
 viGpibUnaddressed,
     viGpibTalker,
-    viGpibListener :: ViInt16
+    viGpibListener :: Integral a => a
 viGpibUnaddressed = 0
 viGpibTalker      = 1
 viGpibListener    = 2
@@ -1521,7 +1526,7 @@ viVxiCmd16,
     viVxiCmd32,
     viVxiCmd32Resp16,
     viVxiCmd32Resp32,
-    viVxiResp32 :: ViInt16
+    viVxiResp32 :: Integral a => a
 viVxiCmd16       = 0x0200
 viVxiCmd16Resp16 = 0x0202
 viVxiResp16      = 0x0002
@@ -1538,7 +1543,7 @@ viAssertSignal,
     viAssertIrq4,
     viAssertIrq5,
     viAssertIrq6,
-    viAssertIrq7 :: ViInt16
+    viAssertIrq7 :: Integral a => a
 viAssertSignal      = -1
 viAssertUseAssigned = 0
 viAssertIrq1        = 1
@@ -1551,7 +1556,7 @@ viAssertIrq7        = 7
 
 viUtilAssertSysreset,
     viUtilAssertSysfail,
-    viUtilDeassertSysfail :: ViInt16
+    viUtilDeassertSysfail :: Integral a => a
 viUtilAssertSysreset  = 1
 viUtilAssertSysfail   = 2
 viUtilDeassertSysfail = 3
@@ -1560,7 +1565,7 @@ viVxiClassMemory,
     viVxiClassExtended,
     viVxiClassMessage,
     viVxiClassRegister,
-    viVxiClassOther :: ViInt16
+    viVxiClassOther :: Integral a => a
 viVxiClassMemory   = 0
 viVxiClassExtended = 1
 viVxiClassMessage  = 2
@@ -1570,13 +1575,13 @@ viVxiClassOther    = 4
 viPxiAddrNone,
     viPxiAddrMem,
     viPxiAddrIo,
-    viPxiAddrCfg :: ViInt16
+    viPxiAddrCfg :: Integral a => a
 viPxiAddrNone = 0
 viPxiAddrMem  = 1
 viPxiAddrIo   = 2
 viPxiAddrCfg  = 3
 
-viTrigUnknown :: ViInt16
+viTrigUnknown :: Integral a => a
 viTrigUnknown = -1
 
 viPxiLbusUnknown,
@@ -1591,7 +1596,7 @@ viPxiLbusUnknown,
     viPxiLbusStarTrigBus7,
     viPxiLbusStarTrigBus8,
     viPxiLbusStarTrigBus9,
-    viPxiStarTrigController :: ViInt16
+    viPxiStarTrigController :: Integral a => a
 viPxiLbusUnknown        = -1
 viPxiLbusNone           = 0
 viPxiLbusStarTrigBus0   = 1000
@@ -1608,11 +1613,11 @@ viPxiStarTrigController = 1413
 
 {- National Instruments -}
 viIntfRio,
-    viIntfFirewire :: ViInt16
+    viIntfFirewire :: Integral a => a
 viIntfRio      = 8
 viIntfFirewire = 9
 
-viAttrSyncMxiAllowEn :: ViUInt32
+viAttrSyncMxiAllowEn :: Integral a => a
 viAttrSyncMxiAllowEn = 0x3FFF0161
 
 {- Misc -}
@@ -1621,7 +1626,7 @@ viAttrFirewireDestUpperOffset,
     viAttrFirewireWinUpperOffset,
     viAttrFirewireVendorId,
     viAttrFirewireLowerChipId,
-    viAttrFirewireUpperChipId :: ViUInt32
+    viAttrFirewireUpperChipId :: Integral a => a
 viAttrFirewireDestUpperOffset = 0x3FFF01F0
 viAttrFirewireSrcUpperOffset  = 0x3FFF01F1
 viAttrFirewireWinUpperOffset  = 0x3FFF01F2
@@ -1629,5 +1634,5 @@ viAttrFirewireVendorId        = 0x3FFF01F3
 viAttrFirewireLowerChipId     = 0x3FFF01F4
 viAttrFirewireUpperChipId     = 0x3FFF01F5
 
-viFirewireDfltSpace :: ViInt16
+viFirewireDfltSpace :: Integral a => a
 viFirewireDfltSpace = 5

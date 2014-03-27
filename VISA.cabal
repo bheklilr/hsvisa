@@ -10,18 +10,24 @@ build-type:          Simple
 cabal-version:       >=1.8
 
 library
-  exposed-modules:      VISA.Types, VISA.Consts, VISA.Vpp43, VISA.IO, VISA.Trans, VISA
+  exposed-modules:      VISA.Driver.VppConsts,
+                        VISA.Driver.Types,
+                        VISA.Driver.Vpp43,
+                        VISA.Driver.IO,
+                        VISA.Trans,
+                        Visa.IO,
+                        VISA
   build-depends:        base == 4.6.*,
                         mtl  == 2.1.*
 --  extra-lib-dirs:       C:/Users/astevens/projects/haskell/visa
 --  extra-libraries:      visa32
-  ghc-options:          -fforce-recomp -Wall -fno-warn-unused-do-bind -LC:/Users/astevens/projects/haskell/visa -lvisa32
+  ghc-options:          -fforce-recomp -Wall -fno-warn-unused-do-bind
   install-includes:     visa32.dll, visa.h
 
---executable test_visa
---  main-is:              test_visa.hs
---  build-depends:        base == 4.6.*
---  extra-lib-dirs:       C:/Users/astevens/projects/haskell/visa
---  extra-libraries:      visa32
---  ghc-options:          -fforce-recomp -Wall -fno-warn-unused-do-bind -LC:/Users/astevens/projects/haskell/visa -lvisa32
---  install-includes:     visa32.dll, visa.h
+executable test_visa
+  main-is:              test_visa.hs
+  build-depends:        base == 4.6.*
+  extra-lib-dirs:       ./
+  extra-libraries:      visa32
+  ghc-options:          -fforce-recomp -Wall -fno-warn-unused-do-bind
+  install-includes:     visa32.dll, visa.h

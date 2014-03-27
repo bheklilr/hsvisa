@@ -1,6 +1,9 @@
 {-# LANGUAGE BangPatterns #-}
 module VISA.IO
-    ( Buffer
+    ( module VISA.Trans
+
+    , getSession, getRsrcMgr
+
     , openDefaultRM
     , findRsrc, findNext, parseRsrc
     , open, close
@@ -8,322 +11,284 @@ module VISA.IO
     , statusDesc
     , terminate
     , lock, unlock
-    , enableEvent, disableEvent, discardEvents, waitOnEvent
-    , installHandler, uninstallHandler
-    , readVi, readAsync, readSTB
-    , writeVi, writeAsync
-    , assertTrigger
-    , clear, setBuf, flush
-    , bufWrite, bufRead
-    , in8, in16, in32
-    , out8, out16, out32
-    , moveIn8, moveIn16, moveIn32
-    , moveOut8, moveOut16, moveOut32
-    , move, moveAsync
-    , mapAddress, unmapAddress
-    , peek8, peek16, peek32
-    , poke8, poke16, poke32
-    , memAlloc, memFree
-    , gpibControlREN, gpibControlATN, gpibSendIFC, gpibCommand, gpibPassControl
-    , assertUtilSignal, assertIntrSignal
-    , mapTrigger, unmapTrigger
-    , usbControlOut, usbControlIn
-    , vxiCommandQuery, pxiReserveTriggers
+    , enableEvent, disableEvent, discardEvents --, waitOnEvent
+    --, installHandler, uninstallHandler
+    , readVi --, readAsync, readSTB
+    , writeVi --, writeAsync
+    --, assertTrigger
+    --, clear, setBuf, flush
+    --, bufWrite, bufRead
+    --, in8, in16, in32
+    --, out8, out16, out32
+    --, moveIn8, moveIn16, moveIn32
+    --, moveOut8, moveOut16, moveOut32
+    --, move, moveAsync
+    --, mapAddress, unmapAddress
+    --, peek8, peek16, peek32
+    --, poke8, poke16, poke32
+    --, memAlloc, memFree
+    --, gpibControlREN, gpibControlATN, gpibSendIFC, gpibCommand, gpibPassControl
+    --, assertUtilSignal, assertIntrSignal
+    --, mapTrigger, unmapTrigger
+    --, usbControlOut, usbControlIn
+    --, vxiCommandQuery
     ) where
 
-import VISA.Types
-import VISA.Vpp43
 
-import Foreign.C.String
-import Foreign.Ptr
-import Foreign.Storable
-import Foreign.Marshal.Alloc
+import VISA.Trans
+import VISA.Driver.Types
+import VISA.Driver.VppConsts
+import qualified VISA.Driver.IO as Vi
 
-type Buffer = Ptr ViChar
-
---genericWithPtr :: (Storable a) => (Ptr a -> IO c) -> (Ptr a -> IO d) -> IO (c, d)
---genericWithPtr action reader =
---    let action' ptr = do
---        result <- action ptr
---        contents <- reader ptr
---        return (result, contents)
---    in alloca action'
-
-genericWithPtr :: (Storable a) => (Ptr a -> IO c) -> (Ptr a -> IO d) -> IO (c, d)
-genericWithPtr action reader = do
-    ptr <- malloc
-    result <- action ptr
-    contents <- reader ptr
-    free ptr
-    return (result, contents)
-
-withPtr :: (Storable a) => (Ptr a -> IO c) -> IO (c, a)
-withPtr action = genericWithPtr action peek
-
-withBuf :: (Buffer -> IO a) -> IO (a, String)
-withBuf action = genericWithPtr action peekCString
-
-withViBuf :: (ViBuf -> Ptr ViUInt32 -> IO a) -> IO (a, String)
-withViBuf action = do
-    buf <- mallocBytes 2048 :: IO ViBuf
-    (result, ctr) <- withPtr (action buf)
-    chars <- mapM (peek . plusPtr buf) [0 .. fromEnum ctr - 1]
-    free buf
-    let buffer = map (toEnum . fromEnum :: ViByte -> Char) chars
-    return (result, buffer)
-
-withWriteBuf :: String -> (Buffer -> IO a) -> IO a
-withWriteBuf buffer action = do
-    buf <- newCString buffer
-    result <- action buf
-    free buf
-    return result
-
-genericWithPtr2 :: (Storable a1, Storable a2)
-    => (Ptr a1 -> Ptr a2 -> IO b)
-    -> (Ptr a1 -> IO c1) -> (Ptr a2 -> IO c2)
-    -> IO (b, c1, c2)
-genericWithPtr2 action reader1 reader2 = do
-    ((result, contents2), contents1) <-
-        genericWithPtr (\p1 -> genericWithPtr (action p1) reader2) reader1
-    return (result, contents1, contents2)
-
-withPtr2 :: (Storable a1, Storable a2)
-    => (Ptr a1 -> Ptr a2 -> IO b)
-    -> IO (b, a1, a2)
-withPtr2 action = genericWithPtr2 action peek peek
-
-genericWithPtr3 :: (Storable a1, Storable a2, Storable a3)
-    => (Ptr a1 -> Ptr a2 -> Ptr a3 -> IO b)
-    -> (Ptr a1 -> IO c1) -> (Ptr a2 -> IO c2) -> (Ptr a3 -> IO c3)
-    -> IO (b, c1, c2, c3)
-genericWithPtr3 action reader1 reader2 reader3 = do
-    ((result, contents2, contents3), contents1) <-
-        genericWithPtr (\p1 -> genericWithPtr2 (action p1) reader2 reader3) reader1
-    return (result, contents1, contents2, contents3)
-
---genericWithPtr4 :: (Storable a1, Storable a2, Storable a3, Storable a4)
---    => (Ptr a1 -> Ptr a2 -> Ptr a3 -> Ptr a4 -> IO b)
---    -> (Ptr a1 -> IO c1) -> (Ptr a2 -> IO c2)
---    -> (Ptr a3 -> IO c3) -> (Ptr a4 -> IO c4)
---    -> IO (b, c1, c2, c3, c4)
---genericWithPtr4 action reader1 reader2 reader3 reader4 = do
---    ((r, c2, c3, c4), c1) <-
---        genericWithPtr (\p1 -> genericWithPtr3 (action p1) reader2 reader3 reader4) reader1
---    return (r, c1, c2, c3, c4)
+import Data.Foldable (forM_)
+import Control.Monad (when, unless)
 
 --------------------------------------------------------------------------------
 
-openDefaultRM :: IO (ViStatus, ViSession)
-openDefaultRM = withPtr viOpenDefaultRM
+successCodes :: Integral a => [a]
+successCodes =
+    [ viSuccess
+    , viSuccessEventEn
+    , viSuccessEventDis
+    , viSuccessQueueEmpty
+    , viSuccessTermChar
+    , viSuccessMaxCnt
+    , viSuccessDevNpresent
+    , viSuccessTrigMapped
+    , viSuccessQueueNempty
+    , viSuccessNchain
+    , viSuccessNestedShared
+    , viSuccessNestedExclusive
+    , viSuccessSync]
+
+-- | Checks if the status is an error code, and if so it gets the error message
+-- and throws the error.
+errorHandle :: MonadIO io => ViStatus -> VisaT io ()
+errorHandle !status = unless (status `elem` successCodes) $ do
+    Visa _ rm <- get
+    case rm of
+        Just vi -> do
+            (stat, desc) <- liftIO $ Vi.statusDesc vi status
+            when (stat == 0) $ do
+                liftIO $ Vi.close vi
+                throwError (status, desc)
+        Nothing -> throwError (status, "")
+
+getSession :: MonadIO m => VisaT m ViSession
+getSession = do
+    Visa sesn _ <- get
+    case sesn of
+        Just vi -> return vi
+        Nothing -> openDefaultRM
+
+getRsrcMgr :: MonadIO m => VisaT m ViSession
+getRsrcMgr = do
+    Visa _ rm <- get
+    case rm of
+        Just vi -> return vi
+        Nothing -> openDefaultRM
+
+putSession :: MonadIO io => ViSession -> VisaT io ()
+putSession sesn = do
+    Visa oldSesn rm <- get
+    forM_ oldSesn close  -- Closes if oldSesn is Just vi
+    put $ Visa (Just sesn) rm
+
+openDefaultRM :: MonadIO m => VisaT m ViSession
+openDefaultRM = do
+    Visa sesn rm <- get
+    case rm of
+        Nothing -> do
+            (status, vi) <- liftIO Vi.openDefaultRM
+            errorHandle status
+            put $ Visa sesn (Just vi)
+            return vi
+        Just vi -> return vi
+
+findRsrc :: MonadIO io => String -> VisaT io (ViFindList, ViUInt32, String)
+findRsrc rsrcName = do
+    vi <- getRsrcMgr
+    (status, fl, cnt, first) <- liftIO $ Vi.findRsrc vi rsrcName
+    errorHandle status
+    return (fl, cnt, first)
+
+findNext :: MonadIO io => ViFindList -> VisaT io String
+findNext fl = do
+    (status, next) <- liftIO $ Vi.findNext fl
+    errorHandle status
+    return next
+
+parseRsrc :: MonadIO io => String -> VisaT io (ViUInt16, ViUInt16)
+parseRsrc rsrc = do
+    rm <- getRsrcMgr
+    (status, intfType, intfNum) <- liftIO $ Vi.parseRsrc rm rsrc
+    errorHandle status
+    return (intfType, intfNum)
+
+open :: MonadIO io => String -> ViAccessMode -> ViUInt32 -> VisaT io ViSession
+open rsrc accessMode openTimout = do
+    rm <- getRsrcMgr
+    (status, sesn) <- liftIO $ Vi.open rm rsrc accessMode openTimout
+    errorHandle status
+    putSession sesn
+    return sesn
+
+close :: MonadIO io => ViSession -> VisaT io ()
+close sesn = liftIO (Vi.close sesn) >>= errorHandle
+
+setAttribute :: MonadIO io => ViAttr -> ViAttrState -> VisaT io ()
+setAttribute attribute attrState = do
+    vi <- getSession
+    liftIO (Vi.setAttribute vi attribute attrState) >>= errorHandle
+
+getAttribute :: MonadIO io => ViObject -> ViAttr -> VisaT io ViAttrState
+getAttribute vi attribute = do
+    (status, attrState) <- liftIO $ Vi.getAttribute vi attribute
+    errorHandle status
+    return attrState
 
-findRsrc :: ViSession -> String -> IO (ViStatus, ViFindList, ViUInt32, String)
-findRsrc session rsrc = withWriteBuf rsrc $ \buf -> genericWithPtr3 (viFindRsrc session buf) peek peek peekCString
+statusDesc :: MonadIO io => ViObject -> ViStatus -> VisaT io String
+statusDesc vi status = do
+    (stat, msg) <- liftIO $ Vi.statusDesc vi status
+    errorHandle stat
+    return msg
 
-findNext :: ViFindList -> IO (ViStatus, String)
-findNext fl = withBuf (viFindNext fl)
+terminate :: MonadIO io => ViObject -> ViUInt16 -> ViJobId -> VisaT io ()
+terminate vi degree jobId = liftIO (Vi.terminate vi degree jobId) >>= errorHandle
 
-parseRsrc :: ViSession -> String -> IO (ViStatus, ViUInt16, ViUInt16)
-parseRsrc session rsrc = withWriteBuf rsrc $ \buf -> genericWithPtr2 (viParseRsrc session buf) peek peek
+lock :: MonadIO io => ViAccessMode -> ViUInt32 -> String -> VisaT io String
+lock lockType timeout requestedKey = do
+    vi <- getSession
+    (status, accessKey) <- liftIO $ Vi.lock vi lockType timeout requestedKey
+    errorHandle status
+    return accessKey
 
-open :: ViSession -> String -> ViAccessMode -> ViUInt32 -> IO (ViStatus, ViSession)
-open session rsrc accessMode options = withWriteBuf rsrc $ \buf -> withPtr (viOpen session buf accessMode options)
+unlock :: MonadIO io => VisaT io ()
+unlock = getSession >>= liftIO . Vi.unlock >>= errorHandle
 
-close :: ViObject -> IO ViStatus
-close = viClose
+enableEvent :: MonadIO io => ViEventType -> ViUInt16 -> ViEventFilter -> VisaT io ()
+enableEvent eventType mechanism context = do
+    vi <- getSession
+    liftIO (Vi.enableEvent vi eventType mechanism context) >>= errorHandle
 
-setAttribute :: ViObject -> ViAttr -> ViAttrState -> IO ViStatus
-setAttribute = viSetAttribute
+disableEvent :: MonadIO io => ViEventType -> ViUInt16 -> VisaT io ()
+disableEvent eventType mechanism = do
+    vi <- getSession
+    liftIO (Vi.disableEvent vi eventType mechanism) >>= errorHandle
 
-getAttribute :: ViObject -> ViAttr -> Ptr () -> IO ViStatus
-getAttribute = viGetAttribute
+discardEvents :: MonadIO io => ViEventType -> ViUInt16 -> VisaT io ()
+discardEvents eventType mechanism = do
+    vi <- getSession
+    liftIO (Vi.discardEvents vi eventType mechanism) >>= errorHandle
 
-statusDesc :: ViObject -> ViStatus -> IO (ViStatus, String)
-statusDesc obj status = withBuf (viStatusDesc obj status)
+--waitOnEvent
 
-terminate :: ViObject -> ViUInt16 -> ViJobId -> IO ViStatus
-terminate = viTerminate
+--installHandler
 
-lock :: ViSession -> ViAccessMode -> ViUInt32 -> String -> IO (ViStatus, String)
-lock session accessMode options keyId = withWriteBuf keyId $ \keyIdBuf -> withBuf (viLock session accessMode options keyIdBuf)
+--uninstallHandler
 
-unlock :: ViSession -> IO ViStatus
-unlock = viUnlock
+readVi :: MonadIO io => ViUInt32 -> VisaT io String
+readVi cnt = do
+    vi <- getSession
+    (status, msg) <- liftIO $ Vi.readVi vi cnt
+    errorHandle status
+    return msg
 
-enableEvent :: ViSession -> ViEventType -> ViUInt16 -> ViEventFilter -> IO ViStatus
-enableEvent = viEnableEvent
+--readAsync
 
-disableEvent :: ViSession -> ViEventType -> ViUInt16 -> IO ViStatus
-disableEvent = viDisableEvent
+--readSTB
 
-discardEvents :: ViSession -> ViEventType -> ViUInt16 -> IO ViStatus
-discardEvents = viDiscardEvents
+writeVi :: MonadIO io => String -> VisaT io ViUInt32
+writeVi msg = do
+    vi <- getSession
+    (status, cnt) <- liftIO $ Vi.writeVi vi msg
+    errorHandle status
+    return cnt
 
-waitOnEvent :: ViSession -> ViEventType -> ViUInt32 -> IO (ViStatus, ViEventType, ViEvent)
-waitOnEvent session eventType options  = withPtr2 (viWaitOnEvent session eventType options)
+--writeAsync
 
-installHandler :: ViSession -> ViEventType -> ViHndlr -> ViAddr -> IO ViStatus
-installHandler = viInstallHandler
+--assertTrigger
 
-uninstallHandler :: ViSession -> ViEventType -> ViHndlr -> ViAddr -> IO ViStatus
-uninstallHandler = viUninstallHandler
+--clear :: MonadIO m =>
+--clear
 
-readVi :: ViSession -> ViUInt32 -> IO (ViStatus, String)
-readVi session count = withViBuf (\buf -> viRead session buf count)
+--setBuf
 
-readAsync :: ViSession -> ViBuf -> ViUInt32 -> Ptr ViJobId -> IO ViStatus
-readAsync = viReadAsync
+--flush :: MonadIO m =>
+--flush
 
-writeVi :: ViSession -> String -> IO (ViStatus, ViUInt32)
-writeVi session msg = do
-    buf <- malloc :: IO ViBuf
-    let count = length msg
-    let buffer = map (toEnum . fromEnum :: Char -> ViByte) msg
-    mapM_ (\(i, c) -> plusPtr buf i `poke` c) $ zip [0 .. count - 1] buffer
-    result <- withPtr $ viWrite session buf (toEnum count)
-    free buf
-    return result
+--bufWrite
 
-writeAsync :: ViSession -> ViBuf -> ViUInt32 -> Ptr ViJobId -> IO ViStatus
-writeAsync = viWriteAsync
+--bufRead
 
-assertTrigger :: ViSession -> ViUInt16 -> IO ViStatus
-assertTrigger = viAssertTrigger
+--in8
 
-readSTB :: ViSession -> IO (ViStatus, ViUInt16)
-readSTB = withPtr . viReadSTB
+--in16
 
-clear :: ViSession -> IO ViStatus
-clear = viClear
+--in32
 
-setBuf :: ViSession -> ViUInt16 -> ViUInt32 -> IO ViStatus
-setBuf = viSetBuf
+--out8
 
-flush :: ViSession -> ViUInt16 -> IO ViStatus
-flush = viFlush
+--out16
 
-bufWrite :: ViSession -> ViBuf -> ViUInt32 -> Ptr ViUInt32 -> IO ViStatus
-bufWrite = viBufWrite
+--out32
 
-bufRead :: ViSession -> Ptr ViBuf -> ViUInt32 -> Ptr ViUInt32 -> IO ViStatus
-bufRead = viBufRead
+--moveIn8
 
-in8 :: ViSession -> ViUInt16 -> ViBusAddress -> Ptr ViUInt8 -> IO ViStatus
-in8 = viIn8
+--moveIn16
 
-out8 :: ViSession -> ViUInt16 -> ViBusAddress -> ViUInt8 -> IO ViStatus
-out8 = viOut8
+--moveIn32
 
-in16 :: ViSession -> ViUInt16 -> ViBusAddress -> Ptr ViUInt16 -> IO ViStatus
-in16 = viIn16
+--moveOut8
 
-out16 :: ViSession -> ViUInt16 -> ViBusAddress -> ViUInt16 -> IO ViStatus
-out16 = viOut16
+--moveOut16
 
-in32 :: ViSession -> ViUInt16 -> ViBusAddress -> Ptr ViUInt32 -> IO ViStatus
-in32 = viIn32
+--moveOut32
 
-out32 :: ViSession -> ViUInt16 -> ViBusAddress -> ViUInt32 -> IO ViStatus
-out32 = viOut32
+--move
 
-moveIn8 :: ViSession -> ViUInt16 -> ViBusAddress -> ViBusSize -> Ptr ViUInt8 -> IO ViStatus
-moveIn8 = viMoveIn8
+--moveAsync
 
-moveOut8 :: ViSession -> ViUInt16 -> ViBusAddress -> ViBusSize -> Ptr ViUInt8 -> IO ViStatus
-moveOut8 = viMoveOut8
+--mapAddress
 
-moveIn16 :: ViSession -> ViUInt16 -> ViBusAddress -> ViBusSize -> Ptr ViUInt16 -> IO ViStatus
-moveIn16 = viMoveIn16
+--unmapAddress
 
-moveOut16 :: ViSession -> ViUInt16 -> ViBusAddress -> ViBusSize -> Ptr ViUInt16 -> IO ViStatus
-moveOut16 = viMoveOut16
+--peek8
 
-moveIn32 :: ViSession -> ViUInt16 -> ViBusAddress -> ViBusSize -> Ptr ViUInt32 -> IO ViStatus
-moveIn32 = viMoveIn32
+--peek16
 
-moveOut32 :: ViSession -> ViUInt16 -> ViBusAddress -> ViBusSize -> Ptr ViUInt32 -> IO ViStatus
-moveOut32 = viMoveOut32
+--peek32
 
-move :: ViSession -> ViUInt16 -> ViBusAddress -> ViUInt16 -> ViUInt16 -> ViBusAddress -> ViUInt16 -> ViBusSize -> IO ViStatus
-move = viMove
+--poke8
 
-moveAsync :: ViSession -> ViUInt16 -> ViBusAddress -> ViUInt16 -> ViUInt16 -> ViBusAddress -> ViUInt16 -> ViBusSize -> IO (ViStatus, ViJobId)
-moveAsync vi srcSpace srcOffset srcWidth destSpace destOffset destWidth srcLength =
-    withPtr $ viMoveAsync vi srcSpace srcOffset srcWidth destSpace destOffset destWidth srcLength
+--poke16
 
-mapAddress :: ViSession -> ViUInt16 -> ViBusAddress -> ViBusSize -> ViBoolean -> ViAddr -> IO (ViStatus, ViAddr)
-mapAddress vi mapSpace mapOffset mapSize access suggested =
-    withPtr $ viMapAddress vi mapSpace mapOffset mapSize access suggested
+--poke32
 
-unmapAddress :: ViSession -> IO ViStatus
-unmapAddress = viUnmapAddress
+--memAlloc
 
-peek8 :: ViSession -> ViAddr -> Ptr ViUInt8 -> IO ViStatus
-peek8 = viPeek8
+--memFree
 
-poke8 :: ViSession -> ViAddr -> ViUInt8 -> IO ViStatus
-poke8 = viPoke8
+--gpibControlREN
 
-peek16 :: ViSession -> ViAddr -> Ptr ViUInt16 -> IO ViStatus
-peek16 = viPeek16
+--gpibControlATN
 
-poke16 :: ViSession -> ViAddr -> ViUInt16 -> IO ViStatus
-poke16 = viPoke16
+--gpibSendIFC
 
-peek32 :: ViSession -> ViAddr -> Ptr ViUInt32 -> IO ViStatus
-peek32 = viPeek32
+--gpibCommand
 
-poke32 :: ViSession -> ViAddr -> ViUInt32 -> IO ViStatus
-poke32 = viPoke32
+--gpibPassControl
 
-memAlloc :: ViSession -> ViBusSize -> IO (ViStatus, ViBusAddress)
-memAlloc vi size = withPtr $ viMemAlloc vi size
+--assertUtilSignal
 
-memFree :: ViSession -> ViBusAddress -> IO ViStatus
-memFree = viMemFree
+--assertIntrSignal
 
-gpibControlREN :: ViSession -> ViUInt16 -> IO ViStatus
-gpibControlREN = viGpibControlREN
+--mapTrigger
 
-gpibControlATN :: ViSession -> ViUInt16 -> IO ViStatus
-gpibControlATN = viGpibControlATN
+--unmapTrigger
 
-gpibSendIFC :: ViSession -> IO ViStatus
-gpibSendIFC = viGpibSendIFC
+--usbControlOut
 
-gpibCommand :: ViSession -> String -> IO (ViStatus, ViUInt32)
-gpibCommand vi cmd = do
-    buf <- malloc :: IO ViBuf
-    let count = length cmd
-    let buffer = map (toEnum . fromEnum :: Char -> ViByte) cmd
-    mapM_ (\(i, c) -> plusPtr buf i `poke` c) $ zip [0 .. count - 1] buffer
-    result <- withPtr $ viGpibCommand vi buf (toEnum count)
-    free buf
-    return result
+--usbControlIn
 
-gpibPassControl :: ViSession -> ViUInt16 -> ViUInt16 -> IO ViStatus
-gpibPassControl = viGpibPassControl
-
-vxiCommandQuery :: ViSession -> ViUInt16 -> ViUInt32 -> Ptr ViUInt32 -> IO ViStatus
-vxiCommandQuery = viVxiCommandQuery
-
-assertUtilSignal :: ViSession -> ViUInt16 -> IO ViStatus
-assertUtilSignal = viAssertUtilSignal
-
-assertIntrSignal :: ViSession -> ViInt16 -> ViUInt32 -> IO ViStatus
-assertIntrSignal = viAssertIntrSignal
-
-mapTrigger :: ViSession -> ViInt16 -> ViInt16 -> ViUInt16 -> IO ViStatus
-mapTrigger = viMapTrigger
-
-unmapTrigger :: ViSession -> ViInt16 -> ViInt16 -> IO ViStatus
-unmapTrigger = viUnmapTrigger
-
-usbControlOut :: ViSession -> ViInt16 -> ViInt16 -> ViUInt16 -> ViUInt16 -> ViUInt16 -> ViBuf -> IO ViStatus
-usbControlOut = viUsbControlOut
-
-usbControlIn :: ViSession -> ViInt16 -> ViInt16 -> ViUInt16 -> ViUInt16 -> ViUInt16 -> Ptr ViBuf -> Ptr ViUInt16 -> IO ViStatus
-usbControlIn = viUsbControlIn
-
-pxiReserveTriggers :: ViSession -> ViInt16 -> Ptr ViInt16 -> Ptr ViInt16 -> Ptr ViInt16 -> IO ViStatus
-pxiReserveTriggers = viPxiReserveTriggers
+--vxiCommandQuery
